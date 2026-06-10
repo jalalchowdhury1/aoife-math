@@ -36,9 +36,10 @@ the older repos had one; it was intentionally dropped here because she's past ne
   `app/page.tsx` is a `"use client"` component; all logic runs in the browser.
 - **Deploy target:** **Vercel**, zero-config Next.js, auto-deploys on push to `main`
   (no `vercel.json`). Repo: `github.com/jalalchowdhury1/aoife-math` (public).
-- **External runtime dependency:** `canvas-confetti` from CDN
-  (`cdn.jsdelivr.net/npm/canvas-confetti@1.6.0`) via `next/script` in `app/layout.tsx`,
-  **not** npm. Attaches to `window.confetti`; silently no-ops if the CDN is blocked.
+- **No external runtime dependencies.** `canvas-confetti` is bundled from npm (imported
+  in `app/page.tsx`) so confetti works offline / on flaky wifi. The predecessor repos
+  loaded it from a CDN — that was deliberately changed here; don't reintroduce the CDN
+  `next/script` tag.
 - **Fonts:** Geist via `next/font/google` (CSS variables), kid-facing font is
   `Bubblegum Sans` from Google Fonts CSS in `app/globals.css` (Tailwind `font-bubble`).
 

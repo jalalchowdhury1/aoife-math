@@ -1,14 +1,7 @@
 "use client";
 // Aoife's Math Game — daily mixed practice: + − × ÷ (20 questions, 5 of each)
 import { useState, useEffect, useCallback, useRef } from "react";
-
-// Declare global confetti
-declare global {
-  interface Window {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    confetti: any;
-  }
-}
+import confetti from "canvas-confetti";
 
 // Types
 type Op = "+" | "-" | "×" | "÷";
@@ -228,14 +221,12 @@ export default function AoifeMathGame() {
       const newScore = score + 1;
       setScore(newScore);
       perQuestionRef.current.push({ id: currentQuestion.id, ms: questionMs, correct: true });
-      if (typeof window !== "undefined" && window.confetti) {
-        window.confetti({
-          particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ["#f43f5e", "#a855f7", "#3b82f6", "#fbbf24"],
-        });
-      }
+      confetti({
+        particleCount: 150,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ["#f43f5e", "#a855f7", "#3b82f6", "#fbbf24"],
+      });
       setMessage("🎉 Awesome! You got it right!");
       setMessageType("correct");
       setGameState("success");
