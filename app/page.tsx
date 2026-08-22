@@ -2,6 +2,7 @@
 // Aoife's Math Game — daily mixed practice: + − × ÷ (20 questions, 5 of each)
 import { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
+import type { RoundLog, RoundQuestionLog } from "@/lib/types";
 
 // Types
 type Op = "+" | "-" | "×" | "÷";
@@ -14,18 +15,6 @@ interface Question {
   id: string;
 }
 
-interface RoundQuestionLog {
-  id: string;
-  ms: number;
-  correct: boolean;
-}
-
-interface RoundLog {
-  date: string; // ISO timestamp
-  totalMs: number;
-  score: number;
-  perQuestion: RoundQuestionLog[];
-}
 
 type GameState = "loading" | "playing" | "success" | "try-again" | "show-answer" | "ended";
 
@@ -119,6 +108,26 @@ const saveRoundLog = (log: RoundLog) => {
   }
 };
 
+// Parent alert: POST the round to /api/rounds (→ Telegram DM). Fire-and-forget,
+// 3 tries with backoff for flaky wifi, never throws, never shown to Aoife.
+const postRound = async (log: RoundLog) => {
+  const body = JSON.stringify(log);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch("/api/rounds", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (res.ok) return;
+    } catch {
+      // retry below
+    }
+    await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+  }
+  console.error("Round alert not delivered");
+};
+
 const formatClock = (ms: number): string => {
   const totalSeconds = Math.round(ms / 1000);
   const m = Math.floor(totalSeconds / 60);
@@ -198,12 +207,14 @@ export default function AoifeMathGame() {
 
   const finishRound = (finalScore: number) => {
     const totalMs = roundStartRef.current !== null ? Date.now() - roundStartRef.current : 0;
-    saveRoundLog({
+    const log: RoundLog = {
       date: new Date().toISOString(),
       totalMs,
       score: finalScore,
       perQuestion: perQuestionRef.current,
-    });
+    };
+    saveRoundLog(log);
+    void postRound(log);
     setGameState("ended");
   };
 
@@ -220,7 +231,7 @@ export default function AoifeMathGame() {
     if (correct) {
       const newScore = score + 1;
       setScore(newScore);
-      perQuestionRef.current.push({ id: currentQuestion.id, ms: questionMs, correct: true });
+      perQuestionRef.current.push({ id: currentQuestion.id, ms: questionMs, correct: true, tries: attempt });
       confetti({
         particleCount: 150,
         spread: 70,
@@ -256,7 +267,7 @@ export default function AoifeMathGame() {
         setMessageType("none");
       }, 1500);
     } else {
-      perQuestionRef.current.push({ id: currentQuestion.id, ms: questionMs, correct: false });
+      perQuestionRef.current.push({ id: currentQuestion.id, ms: questionMs, correct: false, tries: 2 });
       setMessage(`The correct answer is ${currentQuestion.answer}!`);
       setMessageType("show-answer");
       setGameState("show-answer");
