@@ -10,9 +10,10 @@ to 100), `aoife-subtraction-game` (quick ≤20 subtraction), and `aoife-math-2a`
 after a few days of validating this site**. Until then they remain live; don't touch them
 from here.
 
-A tiny, single-page math practice game for a child named Aoife. There is **no backend,
-no database, no API, no auth, no tests, no CI**. Almost the entire app is one file:
-`app/page.tsx`.
+A tiny, single-page math practice game for a child named Aoife. There is **no database,
+no auth, no CI**. Almost the entire app is one file: `app/page.tsx`; the only server code
+is `app/api/rounds/route.ts`, which turns a finished round into a Telegram message for
+the parent (§6). Tests: Vitest, `lib/**/*.test.ts` only.
 
 ---
 
@@ -32,10 +33,13 @@ Questions are **freshly random every round** (`Math.random()` at init). There is
 deliberately **no adaptive learning, no struggling-patterns engine, no repeat list** —
 the older repos had one; it was intentionally dropped here because she's past needing it.
 
-- **Trigger / run model:** purely a browser page. No schedule, no cron, no server route.
-  `app/page.tsx` is a `"use client"` component; all logic runs in the browser.
-- **Deploy target:** **Vercel**, zero-config Next.js, auto-deploys on push to `main`
-  (no `vercel.json`). Repo: `github.com/jalalchowdhury1/aoife-math` (public).
+- **Trigger / run model:** a browser page. No schedule, no cron. `app/page.tsx` is a
+  `"use client"` component; all game logic runs in the browser. The one server route,
+  `POST /api/rounds`, is called once per finished round (§6).
+- **Deploy target:** **Vercel**, zero-config Next.js (no `vercel.json`). Repo:
+  `github.com/jalalchowdhury1/aoife-math` (public). **GitHub auto-deploy is NOT connected**
+  (the Vercel GitHub App lacks access to this repo) — pushing to `main` does nothing on
+  Vercel. Deploy with `vercel --prod --yes` from the repo root, then push.
 - **No external runtime dependencies.** `canvas-confetti` is bundled from npm (imported
   in `app/page.tsx`) so confetti works offline / on flaky wifi. The predecessor repos
   loaded it from a CDN — that was deliberately changed here; don't reintroduce the CDN
@@ -52,7 +56,8 @@ timer display from the predecessor games for the same reason.
 - The clock starts on her **first numpad press** (not page load) and stops at the final
   answer. Per-question times are also captured.
 - Round logs are appended to `localStorage["aoife-math-times"]` (constant `TIMES_KEY`),
-  capped at the last 60 rounds: `{ date, totalMs, score, perQuestion: [{id, ms, correct}] }`.
+  capped at the last 60 rounds: `{ date, totalMs, score, perQuestion: [{id, ms, correct, tries}] }`
+  (types in `lib/types.ts`; `tries` = 1 or 2, added 2026-08-22, absent in older entries).
 - **Parent peek:** 5 quick taps (within 2s) on the round counter ("3 / 20", top-left
   during play) or on the end-screen emoji opens a hidden overlay listing recent rounds
   (date, time, score). That overlay is the ONLY place time is ever shown.
@@ -75,12 +80,20 @@ question ids use ASCII `-`.
 ## 4. Repo layout
 
 ```
-app/page.tsx     — the entire game (generators, state machine, UI, time log, parent peek)
-app/layout.tsx   — metadata, fonts, confetti CDN script
-app/globals.css  — Tailwind v4 CSS-first theme (pink/purple, Bubblegum Sans)
+app/page.tsx              — the entire game (generators, state machine, UI, time log, parent peek, postRound)
+app/layout.tsx            — metadata, fonts
+app/globals.css           — Tailwind v4 CSS-first theme (pink/purple, Bubblegum Sans)
+app/api/rounds/route.ts   — POST a RoundLog → Telegram summary (§6)
+lib/types.ts              — RoundLog / RoundQuestionLog (shared by page, overlay and route)
+lib/roundSummary.ts       — formatRoundSummary(log): pure, unit-tested message builder
+lib/telegram.ts           — sendTelegram(html): copy of aoife-puzzles' sender, never throws
+docs/superpowers/         — specs + plans (2026-08-22 Telegram round alerts)
 ```
 
-`npm run dev` / `npm run build` / `npm run lint`. No env vars. No secrets.
+`npm run dev` / `npm run build` / `npm run lint` / `npm test` (Vitest). Install with
+`npm install --cache ./.npm-cache` (the global npm cache on this Mac is corrupted).
+Env vars (Vercel only, production): `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` — see §6. No
+secrets in the repo; nothing else is configured.
 
 ## 5. Gotchas
 
@@ -92,3 +105,35 @@ app/globals.css  — Tailwind v4 CSS-first theme (pink/purple, Bubblegum Sans)
   round size. Change `TOTAL_QUESTIONS`/`QUESTIONS_PER_OP` together and nowhere else.
 - `buildRound()` dedupes by question id *within* a round; across days repeats are fine
   and expected.
+
+## 6. Telegram round alerts (added 2026-08-22)
+
+Mirrors aoife-puzzles: **one Telegram message per finished round** to Jalal's
+@ZingerJC_bot DM. Aoife never sees any of it; the no-timer rule (§2) is untouched — time
+goes to the parent's phone only.
+
+- Flow: `finishRound()` in `app/page.tsx` builds the `RoundLog`, saves it to localStorage
+  (as before) and calls `postRound(log)` → `fetch("/api/rounds")`, fire-and-forget, **3
+  attempts with 2 s / 4 s / 6 s backoff**, never blocks the end screen, never throws.
+- `app/api/rounds/route.ts`: unauthenticated on purpose — it accepts only a size-capped
+  (50 KB, ≤40 questions) type-checked `RoundLog` whose ids match `/^[0-9+\-×÷]+$/`, and
+  can read nothing back. Returns 400 (bad JSON / shape), 413 (too big), or 200
+  `{ ok: true, notified: boolean }`. Missing env vars → `notified: false`, game unaffected.
+- Message (built by `lib/roundSummary.ts`, see its test for the exact shape):
+  ```
+  🔢 Aoife Math — round done (4 min 12 s) · 18/20
+  + 5/5   − 4/5   × 5/5   ÷ 4/5
+  Missed: 67 − 29, 84 ÷ 7
+  Needed 2 tries: 3
+  Slowest: 4821 + 6130 (58 s)
+  ```
+  Per-op tallies come from the question ids (`1234+5678`, `67-29`, `23×4`, `84÷7`). `Missed`,
+  `Needed 2 tries` and `Slowest` lines are omitted when empty.
+- Env: `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` on the Vercel project `aoife-math` (production),
+  copied from `~/PycharmProjects/.secrets/telegram.env` (same bot/chat as aoife-puzzles).
+  Add with `printf %s "$VAR" | vercel env add VAR production`; never paste values anywhere.
+- No database: duplicates are possible only if the server succeeded but the client never
+  saw the response and retried — fine for a parent notification. Round history still lives
+  only in localStorage (iPad Safari drops it after 7 days without a visit).
+- Verified live 2026-08-22: fixture POST → `notified: true`; a scripted full round in Chrome
+  (one miss, one second try) produced the expected message.
