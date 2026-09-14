@@ -150,6 +150,8 @@ export default function AoifeMathGame() {
   const roundStartRef = useRef<number | null>(null);
   const questionStartRef = useRef<number | null>(null);
   const perQuestionRef = useRef<RoundQuestionLog[]>([]);
+  // Once per round: two queued last-question timers must not log or alert the round twice
+  const roundFinishedRef = useRef(false);
 
   // Hidden parent peek: 5 quick taps on the round counter / end-screen emoji
   const [showTimes, setShowTimes] = useState(false);
@@ -179,6 +181,7 @@ export default function AoifeMathGame() {
     roundStartRef.current = null;
     questionStartRef.current = null;
     perQuestionRef.current = [];
+    roundFinishedRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -206,6 +209,8 @@ export default function AoifeMathGame() {
   };
 
   const finishRound = (finalScore: number) => {
+    if (roundFinishedRef.current) return;
+    roundFinishedRef.current = true;
     const totalMs = roundStartRef.current !== null ? Date.now() - roundStartRef.current : 0;
     const log: RoundLog = {
       date: new Date().toISOString(),

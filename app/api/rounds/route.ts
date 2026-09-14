@@ -1,6 +1,9 @@
 // POST one finished round → Telegram summary to the parent. Unauthenticated on purpose:
 // it accepts only a size-capped, type-checked RoundLog and can read nothing back.
+// A retried POST of the same round is not sent twice (lib/notifyOnce.ts).
 import { NextResponse } from "next/server";
+import { roundClaims } from "@/lib/kv";
+import { notifyOnce } from "@/lib/notifyOnce";
 import { formatRoundSummary } from "@/lib/roundSummary";
 import { sendTelegram } from "@/lib/telegram";
 import type { RoundLog, RoundQuestionLog } from "@/lib/types";
@@ -44,6 +47,9 @@ export async function POST(req: Request) {
   }
   if (!isLog(body)) return NextResponse.json({ error: "bad-round" }, { status: 400 });
 
-  const notified = await sendTelegram(formatRoundSummary(body));
-  return NextResponse.json({ ok: true, notified });
+  // The round's ISO finish time is its identity: a client retry resends the same body.
+  const log = body;
+  const claims = typeof log.date === "string" && log.date.length <= 40 ? roundClaims() : null;
+  const result = await notifyOnce(`notified:${log.date}`, () => sendTelegram(formatRoundSummary(log)), claims);
+  return NextResponse.json({ ok: true, notified: result !== "failed", duplicate: result === "duplicate" });
 }

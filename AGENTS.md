@@ -10,8 +10,8 @@ to 100), `aoife-subtraction-game` (quick ≤20 subtraction), and `aoife-math-2a`
 after a few days of validating this site**. Until then they remain live; don't touch them
 from here.
 
-A tiny, single-page math practice game for a child named Aoife. There is **no database,
-no auth, no CI**. Almost the entire app is one file: `app/page.tsx`; the only server code
+A tiny, single-page math practice game for a child named Aoife. There is **no database
+(one KV key per round, only to stop double alerts, §6), no auth, no CI**. Almost the entire app is one file: `app/page.tsx`; the only server code
 is `app/api/rounds/route.ts`, which turns a finished round into a Telegram message for
 the parent (§6). Tests: Vitest, `lib/**/*.test.ts` only.
 
@@ -129,11 +129,16 @@ goes to the parent's phone only.
   ```
   Per-op tallies come from the question ids (`1234+5678`, `67-29`, `23×4`, `84÷7`). `Missed`,
   `Needed 2 tries` and `Slowest` lines are omitted when empty.
-- Env: `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID` on the Vercel project `aoife-math` (production),
+- Env: `TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID`, `KV_REST_API_URL`, `KV_REST_API_TOKEN` on the Vercel
+  project `aoife-math` (production; the KV pair is aoife-puzzles' values),
   copied from `~/PycharmProjects/.secrets/telegram.env` (same bot/chat as aoife-puzzles).
   Add with `printf %s "$VAR" | vercel env add VAR production`; never paste values anywhere.
-- No database: duplicates are possible only if the server succeeded but the client never
-  saw the response and retried — fine for a parent notification. Round history still lives
-  only in localStorage (iPad Safari drops it after 7 days without a visit).
+- No double alerts (added 2026-09-14): the route claims `aoife_math:notified:<round date>` in
+  the Upstash KV shared with aoife-puzzles (`SET NX EX` 2 days, `lib/kv.ts`) before sending, and
+  deletes the claim if the send fails (`lib/notifyOnce.ts`, tested). A retry of the same round
+  gets `{ notified: true, duplicate: true }` and no second message. `finishRound()` also runs
+  once per round (`roundFinishedRef`). KV env missing or KV down → it sends unguarded; a double
+  ping beats a missing one. Round history still lives only in localStorage (iPad Safari drops it
+  after 7 days without a visit).
 - Verified live 2026-08-22: fixture POST → `notified: true`; a scripted full round in Chrome
   (one miss, one second try) produced the expected message.
