@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import confetti from "canvas-confetti";
 import type { RoundLog, RoundQuestionLog } from "@/lib/types";
 import { buildRound, type Op, type Question } from "@/lib/generators";
+import { enqueueRound, flushRounds } from "@/lib/roundOutbox";
 
 type GameState = "loading" | "playing" | "success" | "try-again" | "show-answer" | "ended";
 
@@ -40,24 +41,16 @@ const saveRoundLog = (log: RoundLog) => {
   }
 };
 
-// Parent alert: POST the round to /api/rounds (→ Telegram DM). Fire-and-forget,
-// 3 tries with backoff for flaky wifi, never throws, never shown to Aoife.
+// Parent alert: queue the round in localStorage and POST it to /api/rounds (→ Telegram DM).
+// Fire-and-forget, 3 flushes with backoff for flaky wifi; anything still unsent is retried
+// on the next page load (lib/roundOutbox.ts). Never throws, never shown to Aoife.
 const postRound = async (log: RoundLog) => {
-  const body = JSON.stringify(log);
+  enqueueRound(log);
   for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const res = await fetch("/api/rounds", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-      if (res.ok) return;
-    } catch {
-      // retry below
-    }
+    if ((await flushRounds()) === 0) return;
     await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
   }
-  console.error("Round alert not delivered");
+  console.error("Round alert not delivered yet — queued for the next visit");
 };
 
 const formatClock = (ms: number): string => {
@@ -119,6 +112,11 @@ export default function AoifeMathGame() {
   useEffect(() => {
     initializeGame();
   }, [initializeGame]);
+
+  // Retry any round alert a previous visit couldn't deliver (Telegram down, wifi dropped).
+  useEffect(() => {
+    void flushRounds().catch(() => {});
+  }, []);
 
   const currentQuestion = questions[currentQuestionIndex];
 

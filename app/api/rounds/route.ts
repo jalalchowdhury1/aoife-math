@@ -51,5 +51,11 @@ export async function POST(req: Request) {
   const log = body;
   const claims = typeof log.date === "string" && log.date.length <= 40 ? roundClaims() : null;
   const result = await notifyOnce(`notified:${log.date}`, () => sendTelegram(formatRoundSummary(log)), claims);
-  return NextResponse.json({ ok: true, notified: result !== "failed", duplicate: result === "duplicate" });
+  if (result === "failed") {
+    // Retryable: the client keeps the round queued (lib/roundOutbox.ts) and re-POSTs it.
+    console.error(`[done-ping] FAILED app=aoife-math round=${log.date} — will retry`);
+    return NextResponse.json({ ok: false, notified: false, retry: true, error: "notify-failed" }, { status: 503 });
+  }
+  console.log(`[done-ping] ${result === "sent" ? "SENT" : "DUPLICATE"} app=aoife-math round=${log.date}`);
+  return NextResponse.json({ ok: true, notified: result === "sent", duplicate: result === "duplicate" });
 }

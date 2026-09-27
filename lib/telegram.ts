@@ -13,9 +13,15 @@ export async function sendTelegram(html: string): Promise<boolean> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, text: html, parse_mode: "HTML", disable_web_page_preview: true }),
+      signal: AbortSignal.timeout(10_000), // a hung call must not leave the round's claim stuck
     });
+    if (!res.ok) {
+      const why = await res.text().catch(() => "");
+      console.error(`[done-ping] telegram HTTP ${res.status} ${why.slice(0, 200)}`);
+    }
     return res.ok;
-  } catch {
+  } catch (e) {
+    console.error(`[done-ping] telegram error ${(e as Error)?.name ?? "unknown"}`);
     return false;
   }
 }
