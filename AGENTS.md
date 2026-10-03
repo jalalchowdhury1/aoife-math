@@ -142,3 +142,8 @@ goes to the parent's phone only.
   after 7 days without a visit).
 - Verified live 2026-08-22: fixture POST → `notified: true`; a scripted full round in Chrome
   (one miss, one second try) produced the expected message.
+
+## Freshness
+
+Freshness: none — every screen is built on her device (questions generated per round, history in localStorage); /api/rounds only sends Telegram.
+Contract: ~/PycharmProjects/FRESHNESS-CONTRACT.md (declared 2 Oct 2026).
