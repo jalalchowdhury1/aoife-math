@@ -1,11 +1,12 @@
-// POST one finished round → Telegram summary to the parent. Unauthenticated on purpose:
+// POST one finished round → its summary waits for the health hub's 4 PM day card
+// (lib/dayCard.ts, 11 Oct 2026; was a Telegram ping per round). Unauthenticated on purpose:
 // it accepts only a size-capped, type-checked RoundLog and can read nothing back.
 // A retried POST of the same round is not sent twice (lib/notifyOnce.ts).
 import { NextResponse } from "next/server";
 import { roundClaims } from "@/lib/kv";
 import { notifyOnce } from "@/lib/notifyOnce";
 import { formatRoundSummary } from "@/lib/roundSummary";
-import { sendTelegram } from "@/lib/telegram";
+import { toDayCard } from "@/lib/dayCard";
 import type { RoundLog, RoundQuestionLog } from "@/lib/types";
 
 const MAX_BODY = 50_000;
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
   // The round's ISO finish time is its identity: a client retry resends the same body.
   const log = body;
   const claims = typeof log.date === "string" && log.date.length <= 40 ? roundClaims() : null;
-  const result = await notifyOnce(`notified:${log.date}`, () => sendTelegram(formatRoundSummary(log)), claims);
+  const result = await notifyOnce(`notified:${log.date}`, () => toDayCard(log.date, formatRoundSummary(log)), claims);
   if (result === "failed") {
     // Retryable: the client keeps the round queued (lib/roundOutbox.ts) and re-POSTs it.
     console.error(`[done-ping] FAILED app=aoife-math round=${log.date} — will retry`);

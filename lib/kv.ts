@@ -32,3 +32,13 @@ export const roundClaims = (): Claims | null =>
         release: (k) => cmd("DEL", PREFIX + k).then(() => undefined),
       }
     : null;
+
+// Day card (11 Oct 2026): a finished round's summary waits in a hash for the health hub's
+// 4 PM card instead of going to Telegram. aoife_math:daycard:<ET day>, field per round, kept 3 days.
+export const CARD_TTL_S = 3 * 24 * 60 * 60;
+export const kvReady = () => !!(url() && token());
+export async function stashCardItem(day: string, field: string, value: string): Promise<void> {
+  const key = `${PREFIX}daycard:${day}`;
+  await cmd("HSET", key, field, value);
+  await cmd("EXPIRE", key, CARD_TTL_S);
+}

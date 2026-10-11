@@ -143,6 +143,14 @@ goes to the parent's phone only.
 - Verified live 2026-08-22: fixture POST → `notified: true`; a scripted full round in Chrome
   (one miss, one second try) produced the expected message.
 
+- **Since 11 Oct 2026 the round summary is NOT sent — it goes to the health hub's 4 PM day card.**
+  Owner's call: one evening card REPLACES the per-round pings (reverses the 14 Sep rule).
+  `notifyOnce` still claims `aoife_math:notified:<round date>`, but its send is `toDayCard`
+  (`lib/dayCard.ts`): HSET `aoife_math:daycard:<ET day>` field `math:<round date>` =
+  `{app:"math", at, text}`, 3-day TTL. A failed stash = a failed send (claim released, client
+  retries). KV not configured → the old direct ping. Rollback with no redeploy: health hub KV
+  `health:daycard:mode` = `"ping"` forwards each summary within ~15 min.
+
 ## Freshness
 
 Freshness: none — every screen is built on her device (questions generated per round, history in localStorage); /api/rounds only sends Telegram.
